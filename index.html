@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Timetable System - Nyamira National Polytechnic</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      color: green;
+    }
+    form, #filterSection {
+      margin-bottom: 20px;
+    }
+    label {
+      margin-right: 10px;
+      color: green;
+    }
+    select, input {
+      margin: 5px;
+      padding: 5px;
+      font-size: 14px;
+    }
+    button {
+      padding: 5px 10px;
+      cursor: pointer;
+      color: green;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      text-align: center;
+      padding: 10px;
+    }
+    th {
+      background-color: #f0f0f0;
+      color: green;
+    }
+    .error {
+      color: red;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    tr.conflict {
+      background-color: #ffcccc;
+      color: #a00;
+    }
+    @media print {
+      button, #filterSection, #searchBar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Timetable System - Nyamira National Polytechnic</h1>
+
+  <!-- Login Form -->
+  <div id="loginForm">
+    <form id="login">
+      <label for="username">Username:</label>
+      <input type="text" id="username" required><br><br>
+      <label for="password">Password:</label>
+      <input type="password" id="password" required><br><br>
+      <button type="submit">Login</button>
+      <p class="error" id="loginError"></p>
+    </form>
+  </div>
+
+  <!-- User Management (Admin only) -->
+  <div id="userManagement" style="display:none;">
+    <h3 style="color: green;">Add New User</h3>
+    <form id="addUserForm">
+      <label for="newUsername">Username:</label>
+      <input type="text" id="newUsername" required>
+      <label for="newPassword">Password:</label>
+      <input type="password" id="newPassword" required>
+      <button type="submit">Add User</button>
+      <p class="error" id="userAddError"></p>
+    </form>
+
+    <h3 style="color: green;">Existing Users</h3>
+    <ul id="userList"></ul>
+  </div>
+
+  <!-- Timetable Form and Table (Hidden by default) -->
+  <div id="timetableSection" style="display:none;">
+    <form id="timetableForm" style="display:none;">
+      <label for="day">Day:</label>
+      <select id="day" required>
+        <option value="">Select</option>
+        <option>Monday</option>
+        <option>Tuesday</option>
+        <option>Wednesday</option>
+        <option>Thursday</option>
+        <option>Friday</option>
+      </select>
+      <label for="course">Course:</label>
+      <select id="course" required>
+        <option value="">Select</option>
+        <option>D2</option>
+        <option>D3</option>
+        <option>L5 MS24</option>
+        <option>L5J25</option>
+        <option>L5S23</option>
+        <option>L6 MS24</option>
+        <option>L6S23</option>
+        <option>L6J25</option>
+      </select>
+      <label for="unit">Unit:</label>
+      <input type="text" id="unit" required placeholder="Enter unit name">
+      <label for="instructor">Instructor:</label>
+      <input type="text" id="instructor" required placeholder="Enter instructor name">
+      <label for="time">Time:</label>
+      <select id="time" required>
+        <option value="">Select</option>
+        <option>7:30</option>
+        <option>9:30</option>
+        <option>11:30</option>
+        <option>1:30</option>
+        <option>3:30-5:30</option>
+      </select>
+      <button type="submit">Add</button>
+    </form>
+
+    <p class="error" id="error"></p>
+
+    <div id="filterSection">
+      <label for="searchBar">Search:</label>
+      <input type="text" id="searchBar" placeholder="Search by instructor, course, unit..." oninput="searchTimetable()">
+      <button onclick="exportToPDF()">Export to PDF</button>
+      <button onclick="printTimetable()">Print Timetable</button>
+    </div>
+
+    <button id="logoutButton" onclick="logout()">Logout</button>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>Course</th>
+          <th>Unit</th>
+          <th>Instructor</th>
+          <th>Time</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="timetableBody">
+        <!-- Timetable rows will be added here -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const timetableForm = document.getElementById('timetableForm');
+    const timetableBody = document.getElementById('timetableBody');
+    const searchBar = document.getElementById('searchBar');
+    const errorElement = document.getElementById('error');
+    const loginForm = document.getElementById('loginForm');
+    const timetableSection = document.getElementById('timetableSection');
+    const loginErrorElement = document.getElementById('loginError');
+    const userManagement = document.getElementById('userManagement');
+    const addUserForm = document.getElementById('addUserForm');
+    const userAddError = document.getElementById('userAddError');
+    const userList = document.getElementById('userList');
+
+    function getUsers() {
+      return JSON.parse(localStorage.getItem('users')) || { admin: 'admin123', user: 'user123' };
+    }
+
+    function saveUsers(users) {
+      localStorage.setItem('users', JSON.stringify(users));
+    }
+
+    function renderUserList() {
+      const users = getUsers();
+      userList.innerHTML = '';
+      for (let username in users) {
+        if (username !== 'admin') {
+          const li = document.createElement('li');
+          li.textContent = username + ' ';
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.onclick = () => {
+            delete users[username];
+            saveUsers(users);
+            renderUserList();
+          };
+          li.appendChild(deleteBtn);
+          userList.appendChild(li);
+        }
+      }
+    }
+
+    function loadTimetable(filter = '') {
+      const timetable = JSON.parse(localStorage.getItem('timetable')) || [];
+      timetableBody.innerHTML = '';
+      timetable.forEach((entry, index) => {
+        if (!filter || filter(entry)) {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${entry.day}</td>
+            <td>${entry.course}</td>
+            <td>${entry.unit}</td>
+            <td>${entry.instructor}</td>
+            <td>${entry.time}</td>
+            <td>
+              ${sessionStorage.getItem('loggedInUser') === 'admin' ? `<button onclick="deleteEntry(${index})">Delete</button>` : ''}
+            </td>
+          `;
+          timetableBody.appendChild(row);
+        }
+      });
+    }
+
+    function saveTimetable(timetable) {
+      localStorage.setItem('timetable', JSON.stringify(timetable));
+    }
+
+    function logout() {
+      sessionStorage.removeItem('loggedInUser');
+      loginForm.style.display = 'block';
+      timetableSection.style.display = 'none';
+      userManagement.style.display = 'none';
+    }
+
+    function login(username, password) {
+      const USERS = getUsers();
+      if (USERS[username] === password) {
+        sessionStorage.setItem('loggedInUser', username);
+        loginForm.style.display = 'none';
+        timetableSection.style.display = 'block';
+        loadTimetable();
+
+        if (username === 'admin') {
+          timetableForm.style.display = 'block';
+          userManagement.style.display = 'block';
+          renderUserList();
+        } else {
+          timetableForm.style.display = 'none';
+          userManagement.style.display = 'none';
+        }
+      } else {
+        loginErrorElement.textContent = 'Invalid username or password.';
+      }
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      login(username, password);
+    });
+
+    timetableForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (sessionStorage.getItem('loggedInUser') !== 'admin') {
+        errorElement.textContent = 'You do not have permission to add timetable entries.';
+        return;
+      }
+      const day = document.getElementById('day').value;
+      const course = document.getElementById('course').value;
+      const unit = document.getElementById('unit').value;
+      const instructor = document.getElementById('instructor').value;
+      const time = document.getElementById('time').value;
+      const timetable = JSON.parse(localStorage.getItem('timetable')) || [];
+      const conflicts = timetable.filter(entry => 
+        entry.day === day && 
+        entry.time === time && 
+        (entry.instructor === instructor || entry.course === course || entry.unit === unit)
+      );
+
+      if (conflicts.length > 0) {
+        let conflictDetails = `Conflict detected:\n`;
+        conflicts.forEach(conflict => {
+          conflictDetails += `- Course ${conflict.course} already has a class at ${conflict.time} with instructor ${conflict.instructor}.\n`;
+        });
+
+        const availableTimes = ['7:30', '9:30', '11:30', '1:30', '3:30-5:30']
+          .filter(t => !timetable.some(entry => entry.day === day && entry.time === t && 
+            (entry.instructor === instructor || entry.course === course || entry.unit === unit)));
+
+        if (availableTimes.length > 0) {
+          conflictDetails += `Suggested times: ${availableTimes.join(', ')}.`;
+        } else {
+          conflictDetails += `No available times on ${day}. Consider choosing a different day.`;
+        }
+
+        errorElement.textContent = conflictDetails;
+        return;
+      }
+
+      errorElement.textContent = '';
+      timetable.push({ day, course, unit, instructor, time });
+      saveTimetable(timetable);
+      loadTimetable();
+      timetableForm.reset();
+    });
+
+    addUserForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value.trim();
+      if (!username || !password) {
+        userAddError.textContent = 'Username and password are required.';
+        return;
+      }
+      const users = getUsers();
+      if (users[username]) {
+        userAddError.textContent = 'User already exists.';
+        return;
+      }
+      users[username] = password;
+      saveUsers(users);
+      userAddError.textContent = 'User added successfully.';
+      addUserForm.reset();
+      renderUserList();
+    });
+
+    function deleteEntry(index) {
+      const timetable = JSON.parse(localStorage.getItem('timetable')) || [];
+      timetable.splice(index, 1);
+      saveTimetable(timetable);
+      loadTimetable();
+    }
+
+    function searchTimetable() {
+      const searchValue = searchBar.value.toLowerCase();
+      loadTimetable(entry => 
+        entry.day.toLowerCase().includes(searchValue) || 
+        entry.course.toLowerCase().includes(searchValue) || 
+        entry.unit.toLowerCase().includes(searchValue) || 
+        entry.instructor.toLowerCase().includes(searchValue)
+      );
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      pdf.text("Timetable - Nyamira National Polytechnic", 10, 10);
+      const timetable = JSON.parse(localStorage.getItem('timetable')) || [];
+      let y = 20;
+      timetable.forEach(entry => {
+        pdf.text(`${entry.day} | ${entry.course} | ${entry.unit} | ${entry.instructor} | ${entry.time}`, 10, y);
+        y += 10;
+      });
+      pdf.save("timetable.pdf");
+    }
+
+    function printTimetable() {
+      const timetable = document.querySelector('table').outerHTML;
+      const originalContent = document.body.innerHTML;
+      document.body.innerHTML = `<h1>Timetable - Nyamira National Polytechnic</h1>${timetable}`;
+      window.print();
+      document.body.innerHTML = originalContent;
+      loadTimetable();
+    }
+
+    if (sessionStorage.getItem('loggedInUser')) {
+      loginForm.style.display = 'none';
+      timetableSection.style.display = 'block';
+      loadTimetable();
+
+      const username = sessionStorage.getItem('loggedInUser');
+      if (username === 'admin') {
+        timetableForm.style.display = 'block';
+        userManagement.style.display = 'block';
+        renderUserList();
+      }
+    }
+  </script>
+</body>
+</html>
