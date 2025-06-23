@@ -177,7 +177,7 @@
     const userList = document.getElementById('userList');
 
     function getUsers() {
-      return JSON.parse(localStorage.getItem('users')) || { admin: 'admin123', user: 'user123' };
+      return JSON.parse(localStorage.getItem('users')) || { admin: 'admin123', user: 'user123', MARK: '1234' };
     }
 
     function saveUsers(users) {
